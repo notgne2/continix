@@ -32,7 +32,7 @@ rec {
     };
   };
 
-  continix.mkDocker {
+  image = continix.mkDocker {
     inherit cont;
 
     tag = "latest";
