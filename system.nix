@@ -10,7 +10,10 @@
   name,
   cfg,
   env ? [],
-  entrypoint,
+  user ? "root",
+  contents ? [],
+  entrypoint ? "",
+  rootEntrypoint ? "",
 }:
 
 let
@@ -52,11 +55,23 @@ let
       cfg
     ];
   }).config.system;
-in
-{
-  inherit sys cfg name env;
-  entrypoint = pkgs.writeScript "entrypoint.sh" ''
+
+  userEntrypointScript = if entrypoint != "" then (pkgs.writeScript "user-entrypoint.sh" ''
     #!${pkgs.dash}/bin/dash
     ${entrypoint}
+  '') else null;
+
+  rootEntrypointScript = if rootEntrypoint != "" then (pkgs.writeScript "root-entrypoint.sh" ''
+    #!${pkgs.dash}/bin/dash
+    ${rootEntrypoint}
+  '') else null;
+in
+{
+  inherit sys cfg name env contents;
+
+  entrypoint = pkgs.writeScript "entrypoint.sh" ''
+    #!${pkgs.dash}/bin/dash
+    ${if rootEntrypointScript != null then rootEntrypointScript else ""}
+    ${if userEntrypointScript != null then "${pkgs.gosu}/bin/gosu ${user} ${userEntrypointScript}" else ""}
   '';
 }

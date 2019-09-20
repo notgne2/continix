@@ -10,29 +10,29 @@
   cont,
   name ? cont.name,
   tag,
-  cmd ? null,
+  cmd ? [],
   workDir ? "/data",
   enableLocale ? false,
   extraDockerConfig ? {},
   env ? [],
+  maxLayers ? 120,
 }:
 
-pkgs.dockerTools.buildImage {
-  name = name;
-  tag = tag;
+pkgs.dockerTools.buildLayeredImage {
+  inherit maxLayers name tag;
 
   contents = pkgs.symlinkJoin {
     name = "${name}-contents";
     paths = [
       cont.sys.build.etc
       cont.sys.path
-    ];
+    ] ++ cont.contents;
   };
 
   config = {
     Entrypoint = cont.entrypoint;
 
-    Cmd = if cmd != null then cmd else [];
+    Cmd = cmd;
     WorkingDir = workDir;
 
     Env = cont.env;
