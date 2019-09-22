@@ -35,6 +35,9 @@ let
       "misc/ids.nix"
       "config/shells-environment.nix"
       "config/system-environment.nix"
+      "config/fonts/fonts.nix"
+      "config/fonts/fontconfig.nix"
+      "config/fonts/fontconfig-penultimate.nix"
       "programs/environment.nix"
       "programs/shadow.nix"
     ]) ++ [
@@ -47,6 +50,9 @@ let
 
       # Bunch of stuff to make modules not complain so much
       ./compat.nix
+
+      # Bunch of stuff to make stock Continix containers weight less
+      ./lite.nix
     ];
 
     # We're sortof expected to _only_ supply modules, but we wanted to remove some things
