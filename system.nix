@@ -217,7 +217,11 @@ in
             ${builtins.concatStringsSep "\n" envLines}
             ${preStart}
             ${start}
-          ''
+          '' + (if (service.serviceConfig.Type == "forking") then ''
+            sleep 1 # This is an ugly hack fix for a race condition, TODO fix this asap
+            PID=$(cat ${service.serviceConfig.PIDFile})
+            ${pkgs.busybox}/bin/xargs ${pkgs.coreutils}/bin/tail -f /proc/$PID/fd/1 /proc/$PID/fd/2 --pid=$PID # this is a "just-in-case", since reptyr wont always work
+          '' else "")
         ) allServices;
       in
       builtins.concatStringsSep "\n" serviceLaunchLines
