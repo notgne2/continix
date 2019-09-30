@@ -218,9 +218,12 @@ in
             ${preStart}
             ${start}
           '' + (if (service.serviceConfig.Type == "forking") then ''
-            sleep 1 # This is an ugly hack fix for a race condition, TODO fix this asap
-            PID=$(cat ${service.serviceConfig.PIDFile})
-            ${pkgs.busybox}/bin/xargs ${pkgs.coreutils}/bin/tail -f /proc/$PID/fd/1 /proc/$PID/fd/2 --pid=$PID # this is a "just-in-case", since reptyr wont always work
+            while true; do
+              export PID=$(cat ${service.serviceConfig.PIDFile})
+              [ ! -z "$PID" ] && break
+            done
+
+            ${pkgs.busybox}/bin/xargs ${pkgs.coreutils}/bin/tail -f /proc/$PID/fd/1 /proc/$PID/fd/2 --pid=$PID
           '' else "")
         ) allServices;
       in
