@@ -93,7 +93,6 @@ in
             service = evaled.config.systemd.services.${serviceName};
 
             maybe = (name: if builtins.hasAttr name service then service.${name} else []);
-            # maybe = (name: if builtins.hasAttr name service then [] else ["a.b"]);
             maybes = (names: builtins.concatLists (map maybe names));
 
             required = map (x: lib.splitString "." x) (maybes [ "after" "wants" "requires" ]);
@@ -124,12 +123,70 @@ in
         requirements = getRequiredBy systemdService;
         shottableRequirements = builtins.filter (s: s.serviceConfig.Type == "oneshot") requirements;
 
-        serviceLaunchLines = map (service:
+        shellEscape = s: (lib.replaceChars [ "\\" ] [ "\\\\" ] s);
+        makeJobScript = name: text:
+          let mkScriptName =  s: "unit-script-" + (lib.replaceChars [ "\\" "@" ] [ "-" "_" ] (shellEscape s) );
+          in  pkgs.writeTextFile { name = mkScriptName name; executable = true; inherit text; };
+
+        reparseExecStart = (x:
+          let
+            split = lib.splitString " " x;
+            first = builtins.elemAt split 0;
+
+            collectVood = (s:
+              let
+                _collectVood = (ss: s:
+                  if (builtins.elem (builtins.substring 0 1 s) [ "@" "-" ":" "!" ]) then
+                    _collectVood (ss + (builtins.substring 0 1 s)) (builtins.substring 1 (builtins.stringLength s) s)
+                  else
+                    [ ss s ]
+                );
+              in
+              _collectVood "" s
+            );
+
+            vood = collectVood first;
+            prefixParts = builtins.elemAt vood 0;
+            firstParts = builtins.elemAt vood 1;
+
+            remainder = builtins.concatStringsSep " " (lib.drop 1 split);
+          in
+          if (builtins.elem "@" (lib.stringToCharacters prefixParts)) then
+            "${pkgs.perl}/bin/perl -e 'exec {shift} @ARGV' ${firstParts} ${remainder}"
+          else
+            "${firstParts} ${remainder}"
+        );
+
+        serviceLaunchLines = map (serviceName:
+          let
+            service = evaled.config.systemd.services.${serviceName};
+            preStart =
+              if builtins.hasAttr "preStart" service then
+                makeJobScript "${serviceName}-pre-start" ''
+                  #! ${pkgs.runtimeShell} -e
+                  ${service.preStart}
+                ''
+              else if builtins.hasAttr "serviceConfig" service && builtins.hasAttr "ExecStartPre" service.serviceConfig then
+                service.serviceConfig.ExecStartPre
+              else
+                "";
+
+            start =
+              if builtins.hasAttr "script" service then
+                makeJobScript "${serviceName}-start" ''
+                  #! ${pkgs.runtimeShell} -e
+                  ${service.script}
+                '' + " " + service.scriptArgs
+              else if builtins.hasAttr "serviceConfig" service && builtins.hasAttr "ExecStart" service.serviceConfig then
+                reparseExecStart service.serviceConfig.ExecStart
+              else
+                "";
+          in
           ''
-            ${service.preStart}
-            ${service.serviceConfig.ExecStart}
+            ${preStart}
+            ${start}
           ''
-        ) (shottableRequirements ++ [ evaled.config.systemd.services.${systemdService} ]);
+        ) (shottableRequirements ++ [ systemdService ]);
       in
       builtins.concatStringsSep "" serviceLaunchLines
       else ""
