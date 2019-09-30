@@ -187,38 +187,7 @@ in
         # Make a list of all the services which should be ran
         allServices = (shottableRequirements ++ [ systemdService ]);
 
-        # Combine the required packages for all services (TODO: per-service)
-        allServiceBinPaths = builtins.concatLists (map (serviceName:
-          evaled.config.systemd.services.${serviceName}.path
-        ) allServices);
-
-        # Make a PATH variable for all the service's packages
-        binPath = lib.makeBinPath (allServiceBinPaths ++ [
-          pkgs.coreutils
-          pkgs.findutils
-          pkgs.gnugrep
-          pkgs.gnused
-        ]);
-
-        # Converts a list of sets into a large list of key-value pairs
-        gatherStone = (ss:
-          builtins.concatLists (map (s:
-            # TODO: maybe there's already a builtin for getting both names and values
-            map (k: [ k s.${k} ]) (builtins.attrNames s)
-          ) ss)
-        );
-
-        # Get a key-value list of all the service's environment variables (TODO: per-service)
-        allServiceEnvironments = gatherStone (map (serviceName:
-          evaled.config.systemd.services.${serviceName}.environment
-        ) allServices);
-
-        # Convert the above into an env-setting script snippet
-        envLines = map (x:
-          "${builtins.elemAt x 0}=${builtins.elemAt x 1}"
-        ) allServiceEnvironments;
-
-        serviceLaunchLines = map (serviceName:
+        serviceLaunchScripts = map (serviceName:
           let
             service = evaled.config.systemd.services.${serviceName};
             preStart =
@@ -242,8 +211,21 @@ in
                 reparseExecStart service.serviceConfig.ExecStart
               else
                 "";
+
+            # Make a PATH variable for all the service's packages
+            binPath = lib.makeBinPath (service.path ++ [
+              pkgs.coreutils
+              pkgs.findutils
+              pkgs.gnugrep
+              pkgs.gnused
+            ]);
+
+            # Convert the service's specified environment variables into an env-setting script snippet
+            envLines = map (k:
+              "${k}=${service.environment.${k}}"
+            ) (builtins.attrNames service.environment);
           in
-          ''
+          pkgs.writeScript "service-launch-${serviceName}" ''
             #! ${pkgs.runtimeShell} -e
             PATH=${binPath}
             ${builtins.concatStringsSep "\n" envLines}
@@ -261,7 +243,7 @@ in
           '' else "")
         ) allServices;
       in
-      builtins.concatStringsSep "\n" serviceLaunchLines
+      builtins.concatStringsSep "\n" serviceLaunchScripts
       else ""
     )
     else null;
