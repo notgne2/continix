@@ -88,81 +88,111 @@ in
     '' + (
       if systemdService != null then
       let
+        # Helper method to recursively gather a list of dependencies for a given service
         getRequiredBy = (serviceName:
           let
+            # Get the service by name
             service = evaled.config.systemd.services.${serviceName};
 
+            # Helper methods for looking for possibly non-existent field names containing a list of services or targets on the service
+            # TODO: use better builtins for this?
             maybe = (name: if builtins.hasAttr name service then service.${name} else []);
             maybes = (names: builtins.concatLists (map maybe names));
 
+            # Scrape the list of targets and services this service wants, and seperate into targets and services
             required = map (x: lib.splitString "." x) (maybes [ "after" "wants" "requires" ]);
             requiredTargets = map (x: builtins.elemAt x 0) (builtins.filter (x: (builtins.elemAt x 1) == "target") required);
             requiredServices = map (x: builtins.elemAt x 0) (builtins.filter (x: (builtins.elemAt x 1) == "service") required);
 
+            # Filter over all other services, to find ones which want to run before this one
             reverseRequired = builtins.filter (aServiceName:
               let
+                # Get the other service by name
                 aService = evaled.config.systemd.services.${aServiceName};
 
+                # Helper methods for looking for possibly non-existent field names containing a list of services or targets on the other service
                 aMaybe = (name: if builtins.hasAttr name aService then aService.${name} else []);
                 aMaybes = (names: builtins.concatLists (map aMaybe names));
 
+                # Scrape the list of targets and services this other service wants to run before
                 aServicePreceeds = map (x: lib.splitString "." x) (aMaybes [ "before" "wantedBy" ]);
                 aServicePreceedsTargets = map (x: builtins.elemAt x 0) (builtins.filter (x: (builtins.elemAt x 1) == "target") aServicePreceeds);
                 aServicePreceedsServices = map (x: builtins.elemAt x 0) (builtins.filter (x: (builtins.elemAt x 1) == "service") aServicePreceeds);
               in
+              # If this other service wants to preceed the service, or if this other service wants to start before a target the service wants
               builtins.elem serviceName aServicePreceedsServices || (builtins.length (builtins.filter (t: builtins.elem t requiredTargets) aServicePreceedsTargets)) != 0
             ) (builtins.attrNames evaled.config.systemd.services);
 
+            # Filtr down the list of required services to only those which exist
             existingRequiredServices = builtins.filter (n: builtins.hasAttr n evaled.config.systemd.services) requiredServices;
 
+            # Make a semi-full list of requirements from the requirements that exist and the requirements found from iterating other services
             semiFullRequiredServices = existingRequiredServices ++ reverseRequired;
           in
+          # Combine our semi-full list of requirements with the scraped requirements of those requirements
           semiFullRequiredServices ++ (builtins.concatLists (map getRequiredBy semiFullRequiredServices))
         );
 
+        # Gather the requirements for the specified service
         requirements = getRequiredBy systemdService;
+        # Filter down to only oneshot services
         shottableRequirements = builtins.filter (s: s.serviceConfig.Type == "oneshot") requirements;
 
+        # Helper copied from the SystemD NixOS module (TODO: import it?)
         shellEscape = s: (lib.replaceChars [ "\\" ] [ "\\\\" ] s);
         makeJobScript = name: text:
           let mkScriptName =  s: "unit-script-" + (lib.replaceChars [ "\\" "@" ] [ "-" "_" ] (shellEscape s) );
           in  pkgs.writeTextFile { name = mkScriptName name; executable = true; inherit text; };
 
+        # Convert a SystemD ExecStart into a bash line (they often begin with special operators that must be parsed)
         reparseExecStart = (x:
           let
+            # Split the launch string by spaces (TODO: take (ba)sh? formatting into account, i.e. quotes)
             split = lib.splitString " " x;
+            # Get the first component of the launch string
             first = builtins.elemAt split 0;
 
+            # Helper to seperate prefix operators from the first part of the Exec command
             collectVood = (s:
               let
+                # Define the actual function internally to expose a more reasonable API, while supporting recursion
                 _collectVood = (ss: s:
+                  # If the current string begins with one of the prefix operator symbols
                   if (builtins.elem (builtins.substring 0 1 s) [ "@" "-" ":" "!" ]) then
+                    # Recurse this function with the first character (the operator) and the remainder
                     _collectVood (ss + (builtins.substring 0 1 s)) (builtins.substring 1 (builtins.stringLength s) s)
                   else
+                    # Return the current string and remainder
                     [ ss s ]
                 );
               in
               _collectVood "" s
             );
 
+            # Use the helper above to seperate the prefix operators from the launch string
             vood = collectVood first;
             prefixParts = builtins.elemAt vood 0;
             firstParts = builtins.elemAt vood 1;
 
+            # Make a string from the remainder of the ExecStart line (not including the first part, which was parsed)
             remainder = builtins.concatStringsSep " " (lib.drop 1 split);
           in
           if (builtins.elem "@" (lib.stringToCharacters prefixParts)) then
+            # TODO: compile some C code to do this instead, as it won't polute the runtime thanks to Nix
             "${pkgs.perl}/bin/perl -e 'exec {shift} @ARGV' ${firstParts} ${remainder}"
-          else # TODO support more operators
+          else # TODO: support more operators
             "${firstParts} ${remainder}"
         );
 
+        # Make a list of all the services which should be ran
         allServices = (shottableRequirements ++ [ systemdService ]);
 
+        # Combine the required packages for all services (TODO: per-service)
         allServiceBinPaths = builtins.concatLists (map (serviceName:
           evaled.config.systemd.services.${serviceName}.path
         ) allServices);
 
+        # Make a PATH variable for all the service's packages
         binPath = lib.makeBinPath (allServiceBinPaths ++ [
           pkgs.coreutils
           pkgs.findutils
@@ -170,18 +200,20 @@ in
           pkgs.gnused
         ]);
 
+        # Converts a list of sets into a large list of key-value pairs
         gatherStone = (ss:
           builtins.concatLists (map (s:
-            map (k:
-              [ k s.${k} ]
-            ) (builtins.attrNames s)
+            # TODO: maybe there's already a builtin for getting both names and values
+            map (k: [ k s.${k} ]) (builtins.attrNames s)
           ) ss)
         );
 
+        # Get a key-value list of all the service's environment variables (TODO: per-service)
         allServiceEnvironments = gatherStone (map (serviceName:
           evaled.config.systemd.services.${serviceName}.environment
         ) allServices);
 
+        # Convert the above into an env-setting script snippet
         envLines = map (x:
           "${builtins.elemAt x 0}=${builtins.elemAt x 1}"
         ) allServiceEnvironments;
@@ -218,12 +250,14 @@ in
             ${preStart}
             ${start}
           '' + (if (service.serviceConfig.Type == "forking") then ''
+            # This will retry reading the PIDFile until success
             while true; do
               export PID=$(cat ${service.serviceConfig.PIDFile})
               [ ! -z "$PID" ] && break
             done
 
-            ${pkgs.busybox}/bin/xargs ${pkgs.coreutils}/bin/tail -f /proc/$PID/fd/1 /proc/$PID/fd/2 --pid=$PID
+            # This will end when the process exits
+            ${pkgs.coreutils}/bin/tail -f /proc/$PID/fd/1 /proc/$PID/fd/2 --pid=$PID
           '' else "")
         ) allServices;
       in
@@ -232,5 +266,6 @@ in
     )
     else null;
   in
+  # Only define an entrypoint if contents for it were provided
   if entrypointScriptContents != null then pkgs.writeScript "entrypoint.sh" entrypointScriptContents else null;
 }
