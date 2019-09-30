@@ -1,5 +1,5 @@
 # Continix
-This is home to a simple project to generate Docker images using Nix all the way, that means more delerative config, and less bash scripts.
+This is home to a simple project to generate Docker images using Nix all the way, that means more declarative config, and less bash scripts.
 
 It's a simple wrapper around eval-config and `dockerTools.buildImage`.
 
