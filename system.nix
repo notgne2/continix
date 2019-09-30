@@ -153,9 +153,38 @@ in
           in
           if (builtins.elem "@" (lib.stringToCharacters prefixParts)) then
             "${pkgs.perl}/bin/perl -e 'exec {shift} @ARGV' ${firstParts} ${remainder}"
-          else
+          else # TODO support more operators
             "${firstParts} ${remainder}"
         );
+
+        allServices = (shottableRequirements ++ [ systemdService ]);
+
+        allServiceBinPaths = builtins.concatLists (map (serviceName:
+          evaled.config.systemd.services.${serviceName}.path
+        ) allServices);
+
+        binPath = lib.makeBinPath (allServiceBinPaths ++ [
+          pkgs.coreutils
+          pkgs.findutils
+          pkgs.gnugrep
+          pkgs.gnused
+        ]);
+
+        gatherStone = (ss:
+          builtins.concatLists (map (s:
+            map (k:
+              [ k s.${k} ]
+            ) (builtins.attrNames s)
+          ) ss)
+        );
+
+        allServiceEnvironments = gatherStone (map (serviceName:
+          evaled.config.systemd.services.${serviceName}.environment
+        ) allServices);
+
+        envLines = map (x:
+          "${builtins.elemAt x 0}=${builtins.elemAt x 1}"
+        ) allServiceEnvironments;
 
         serviceLaunchLines = map (serviceName:
           let
@@ -183,12 +212,15 @@ in
                 "";
           in
           ''
+            #! ${pkgs.runtimeShell} -e
+            PATH=${binPath}
+            ${builtins.concatStringsSep "\n" envLines}
             ${preStart}
             ${start}
           ''
-        ) (shottableRequirements ++ [ systemdService ]);
+        ) allServices;
       in
-      builtins.concatStringsSep "" serviceLaunchLines
+      builtins.concatStringsSep "\n" serviceLaunchLines
       else ""
     )
     else null;
