@@ -178,6 +178,7 @@ in
             # Make a string from the remainder of the ExecStart line (not including the first part, which was parsed)
             remainder = builtins.concatStringsSep " " (lib.drop 1 split);
 
+            # Compile a simple program that will replace argv[0] with the 2nd provided arg
             modFirstArg = pkgs.runCommandCC "mod-first-arg" {} ''
               echo "int main(int c,char*v[]){execvp(v[1],&v[2]);perror(v[1]);return 127;}" > r.c
               gcc -o $out r.c
