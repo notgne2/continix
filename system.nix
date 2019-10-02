@@ -2,6 +2,7 @@
   nixpkgs,
   pkgs,
   lib,
+  stdenv,
 
   ...
 }:
@@ -176,10 +177,14 @@ in
 
             # Make a string from the remainder of the ExecStart line (not including the first part, which was parsed)
             remainder = builtins.concatStringsSep " " (lib.drop 1 split);
+
+            modFirstArg = pkgs.runCommandCC "mod-first-arg" {} ''
+              echo "int main(int c,char*v[]){execvp(v[1],&v[2]);perror(v[1]);return 127;}" > r.c
+              gcc -o $out r.c
+            '';
           in
           if (builtins.elem "@" (lib.stringToCharacters prefixParts)) then
-            # TODO: compile some C code to do this instead, as it won't polute the runtime thanks to Nix
-            "${pkgs.perl}/bin/perl -e 'exec {shift} @ARGV' ${firstParts} ${remainder}"
+            "${modFirstArg} ${firstParts} ${remainder}"
           else # TODO: support more operators
             "${firstParts} ${remainder}"
         );
@@ -231,7 +236,7 @@ in
             ${builtins.concatStringsSep "\n" envLines}
             ${preStart}
             ${start}
-          '' + (if (service.serviceConfig.Type == "forking") then ''
+          '' + (if (service.serviceConfig.Type == "forking") then "\n" + ''
             # This will retry reading the PIDFile until success
             while true; do
               export PID=$(cat ${service.serviceConfig.PIDFile})
