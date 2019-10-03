@@ -240,7 +240,7 @@ in
           '' + (if (service.serviceConfig.Type == "forking") then "\n" + ''
             # This will retry reading the PIDFile until success
             while true; do
-              export PID=$(cat ${service.serviceConfig.PIDFile})
+              export PID=$(${pkgs.coreutils}/bin/cat ${service.serviceConfig.PIDFile})
               [ ! -z "$PID" ] && break
             done
 
