@@ -194,22 +194,23 @@ let
         else
           "";
 
-      # Make a PATH variable for all the service's packages
-      binPath = lib.makeBinPath (service.path ++ [
-        pkgs.coreutils
-        pkgs.findutils
-        pkgs.gnugrep
-        pkgs.gnused
-      ]);
+      env = service.environment // {
+        # Make a PATH variable for all the service's packages
+        PATH = lib.makeBinPath (service.path ++ [
+          pkgs.coreutils
+          pkgs.findutils
+          pkgs.gnugrep
+          pkgs.gnused
+        ]);
+      };
 
       # Convert the service's specified environment variables into an env-setting script snippet
       envLines = map (k:
-        "${k}=${service.environment.${k}}"
-      ) (builtins.attrNames service.environment);
+        "${k}=${env.${k}}"
+      ) (builtins.attrNames env);
     in
     pkgs.writeScript "service-launch-${serviceName}" ''
       #! ${pkgs.runtimeShell} -e
-      PATH=${binPath}
       ${builtins.concatStringsSep "\n" envLines}
       ${preStart}
       ${start}
