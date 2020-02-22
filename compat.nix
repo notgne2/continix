@@ -1,17 +1,17 @@
-{ config, lib, utils, pkgs, ... }:
-{
+{ config, lib, utils, pkgs, ... }: {
   # Some "fake" options for modules that dont exist to make other modules happy
   # some of these might be dinosaurs from past experiments
   options = {
     services.nscd.enable = lib.mkOption { default = false; };
-    systemd.services = lib.mkOption {};
-    security.pam = lib.mkOption {};
-    security.wrappers = lib.mkOption {};
-    system.activationScripts = lib.mkOption {};
-    system.build = lib.mkOption {};
+    systemd.services = lib.mkOption { };
+    security.pam = lib.mkOption { };
+    security.acme = lib.mkOption { };
+    security.wrappers = lib.mkOption { };
+    system.activationScripts = lib.mkOption { };
+    system.build = lib.mkOption { };
 
     # time.timeZone must be null for Apache-PHP to shut up
-    time = lib.mkOption {};
+    time = lib.mkOption { };
   };
 
   config = {

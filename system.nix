@@ -11,7 +11,7 @@
   name,
   cfg,
   env ? [],
-  user ? "root",
+  user ? null,
   contents ? [],
   entrypoint ? null,
   rootEntrypoint ? null,
@@ -55,7 +55,10 @@ let
 
       # Bunch of stuff to make stock Continix containers weight less
       ./lite.nix
-    ];
+    ] ++ (if user == null && entrypoint != null then [
+      # Definition for the default user, if a user is not supplied but a user entrypoint is
+      ./custom-modules/default-user.nix
+    ] else []);
 
     # We're sortof expected to _only_ supply modules, but we wanted to remove some things
     # so lets just put the user config here
@@ -234,8 +237,14 @@ in
     entrypointScriptContents = if (rootEntrypointScript != null || userEntrypointScript != null || systemdService != null) then
     ''
       #!${pkgs.dash}/bin/dash
+
+      # If we're lucky, Docker will make us a real one, otherwise lets just make it
+      ${pkgs.busybox}/bin/mkdir -p /tmp
+      # These octets make me cringe but I think this actually correct
+      ${pkgs.busybox}/bin/chmod 777 /tmp
+
       ${if rootEntrypointScript != null then rootEntrypointScript else ""}
-      ${if userEntrypointScript != null then "${pkgs.gosu}/bin/gosu ${user} ${userEntrypointScript}" else ""}
+      ${if userEntrypointScript != null then "${pkgs.gosu}/bin/gosu ${if user != null then user else "continix"} ${userEntrypointScript}" else ""}
     '' + (
       if systemdService != null then
       let
