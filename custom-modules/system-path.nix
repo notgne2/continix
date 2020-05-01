@@ -23,12 +23,12 @@ with lib;
         # Note: We need `/lib' to be among `pathsToLink' for NSS modules
         # to work.
         default = [];
-        example = ["/"];
+        example = [ "/" ];
         description = "List of directories to be symlinked in <filename>/run/current-system/sw</filename>.";
       };
       extraOutputsToInstall = mkOption {
         type = types.listOf types.str;
-        default = [ ];
+        default = [];
         example = [ "doc" "info" "devdoc" ];
         description = "List of additional package outputs to be symlinked into <filename>/run/current-system/sw</filename>.";
       };
@@ -51,7 +51,8 @@ with lib;
 
   config = {
     environment.pathsToLink =
-      [ "/bin"
+      [
+        "/bin"
         "/etc/xdg"
         "/etc/gtk-2.0"
         "/etc/gtk-3.0"
