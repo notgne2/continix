@@ -58,7 +58,7 @@ let
       ] ++ (
         if user == null && entrypoint != null then [
           # Definition for the default user, if a user is not supplied but a user entrypoint is
-          ./custom-modules/default-user.nix
+          ./default-user.nix
         ] else []
       );
 
@@ -261,6 +261,9 @@ in
           ${pkgs.coreutils}/bin/mkdir -p /tmp
           # These octets make me cringe but I think this actually correct
           ${pkgs.coreutils}/bin/chmod 777 /tmp
+
+          ${if user == null && entrypoint != null then "${pkgs.coreutils}/bin/chown -R continix:continix /data" else ""}
+          ${if user == null && entrypoint != null then "${pkgs.coreutils}/bin/chmod -R gu+rwX continix:continix /data" else ""}
 
           ${if rootEntrypointScript != null then rootEntrypointScript else ""}
           ${if userEntrypointScript != null then "${pkgs.gosu}/bin/gosu ${if user != null then user else "continix"} ${userEntrypointScript}" else ""}
