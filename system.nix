@@ -263,7 +263,7 @@ in
           ${pkgs.coreutils}/bin/chmod 777 /tmp
 
           ${if user == null && entrypoint != null then "${pkgs.coreutils}/bin/chown -R continix:continix /data" else ""}
-          ${if user == null && entrypoint != null then "${pkgs.coreutils}/bin/chmod -R gu+rwX continix:continix /data" else ""}
+          ${if user == null && entrypoint != null then "${pkgs.coreutils}/bin/chmod -R gu+rwX /data" else ""}
 
           ${if rootEntrypointScript != null then rootEntrypointScript else ""}
           ${if userEntrypointScript != null then "${pkgs.gosu}/bin/gosu ${if user != null then user else "continix"} ${userEntrypointScript}" else ""}
