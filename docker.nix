@@ -34,7 +34,7 @@ in
       Cmd = cmd;
       WorkingDir = workDir;
 
-      Env = cont.env;
+      Env = cont.env ++ env;
     } // extraDockerConfig;
   }
 )
