@@ -6,7 +6,7 @@ with lib;
     environment = {
       systemPackages = mkOption {
         type = types.listOf types.package;
-        default = [];
+        default = [ ];
         example = literalExample "[ pkgs.firefox pkgs.thunderbird ]";
         description = ''
           The set of packages that appear in
@@ -22,13 +22,13 @@ with lib;
         type = types.listOf types.str;
         # Note: We need `/lib' to be among `pathsToLink' for NSS modules
         # to work.
-        default = [];
+        default = [ ];
         example = [ "/" ];
         description = "List of directories to be symlinked in <filename>/run/current-system/sw</filename>.";
       };
       extraOutputsToInstall = mkOption {
         type = types.listOf types.str;
-        default = [];
+        default = [ ];
         example = [ "doc" "info" "devdoc" ];
         description = "List of additional package outputs to be symlinked into <filename>/run/current-system/sw</filename>.";
       };
@@ -59,6 +59,7 @@ with lib;
         "/lib" # FIXME: remove and update debug-info.nix
         "/sbin"
         "/share/emacs"
+        "/share/hunspell"
         "/share/nano"
         "/share/org"
         "/share/themes"
@@ -74,12 +75,15 @@ with lib;
       paths = config.environment.systemPackages;
       inherit (config.environment) pathsToLink extraOutputsToInstall;
       ignoreCollisions = true;
+      # !!! Hacky, should modularise.
+      # outputs TODO: note that the tools will often not be linked by default
       postBuild =
         ''
+          # Remove wrapped binaries, they shouldn't be accessible via PATH.
+          find $out/bin -maxdepth 1 -name ".*-wrapped" -type l -delete
           if [ -x $out/bin/glib-compile-schemas -a -w $out/share/glib-2.0/schemas ]; then
               $out/bin/glib-compile-schemas $out/share/glib-2.0/schemas
           fi
-
           ${config.environment.extraSetup}
         '';
     };

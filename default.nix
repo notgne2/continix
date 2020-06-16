@@ -1,4 +1,4 @@
-{ nixpkgs ? <nixpkgs>, pkgs ? import nixpkgs {}, ... }:
+{ nixpkgs ? <nixpkgs>, pkgs ? import nixpkgs { }, ... }:
 
 {
   # Generate a Docker image from a system and some other props

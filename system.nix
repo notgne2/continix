@@ -7,9 +7,9 @@
 
 { name
 , cfg
-, env ? []
+, env ? [ ]
 , user ? null
-, contents ? []
+, contents ? [ ]
 , entrypoint ? null
 , rootEntrypoint ? null
 , systemdService ? null
@@ -30,7 +30,7 @@ let
           "misc/lib.nix"
           "config/sysctl.nix"
 
-          # And these are included too for some reason
+          # And these are included too as they are generally useful, we would add everything here but sometimes modules do things even when not enabled
           "misc/extra-arguments.nix"
           "misc/ids.nix"
           "config/shells-environment.nix"
@@ -47,7 +47,6 @@ let
         ./custom-modules/system-path.nix
 
         # Custom users-groups that pregenerates passwd
-        # TODO: use a git submodule pointing to the PR commit
         ./custom-modules/users-groups.nix
 
         # Bunch of stuff to make modules not complain so much
@@ -59,7 +58,7 @@ let
         if user == null && entrypoint != null then [
           # Definition for the default user, if a user is not supplied but a user entrypoint is
           ./default-user.nix
-        ] else []
+        ] else [ ]
       );
 
       # We're sortof expected to _only_ supply modules, but we wanted to remove some things
@@ -72,19 +71,21 @@ let
 
   sys = evaled.config.system;
 
-  userEntrypointScript = if entrypoint != null then (
-    pkgs.writeScript "user-entrypoint.sh" ''
-      #!${pkgs.dash}/bin/dash
-      ${entrypoint}
-    ''
-  ) else null;
+  userEntrypointScript =
+    if entrypoint != null then (
+      pkgs.writeScript "user-entrypoint.sh" ''
+        #!${pkgs.dash}/bin/dash
+        ${entrypoint}
+      ''
+    ) else null;
 
-  rootEntrypointScript = if rootEntrypoint != null then (
-    pkgs.writeScript "root-entrypoint.sh" ''
-      #!${pkgs.dash}/bin/dash
-      ${rootEntrypoint}
-    ''
-  ) else null;
+  rootEntrypointScript =
+    if rootEntrypoint != null then (
+      pkgs.writeScript "root-entrypoint.sh" ''
+        #!${pkgs.dash}/bin/dash
+        ${rootEntrypoint}
+      ''
+    ) else null;
 
   # Filter a list of service items ([ "something.target" "anotherthing.service" ]) into a list of a specific type ([ "something" ])
   filterServiceItemsForType = (required: type: map (x: builtins.elemAt x 0) (builtins.filter (x: (builtins.elemAt x 1) == type) required));
@@ -98,7 +99,7 @@ let
 
         # Helper methods for looking for possibly non-existent field names containing a list of services or targets on the service
         # TODO: use better builtins for this?
-        maybe = (name: if builtins.hasAttr name service then service.${name} else []);
+        maybe = (name: if builtins.hasAttr name service then service.${name} else [ ]);
         maybes = (names: builtins.concatLists (map maybe names));
 
         # Scrape the list of targets and services this service wants, and seperate into targets and services
@@ -107,14 +108,15 @@ let
         requiredServices = filterServiceItemsForType required "service";
 
         # Filter over all other services, to find ones which want to run before this one
-        reverseRequired = builtins.filter (
-          aServiceName:
+        reverseRequired = builtins.filter
+          (
+            aServiceName:
             let
               # Get the other service by name
               aService = services.${aServiceName};
 
               # Helper methods for looking for possibly non-existent field names containing a list of services or targets on the other service
-              aMaybe = (name: if builtins.hasAttr name aService then aService.${name} else []);
+              aMaybe = (name: if builtins.hasAttr name aService then aService.${name} else [ ]);
               aMaybes = (names: builtins.concatLists (map aMaybe names));
 
               # Scrape the list of targets and services this other service wants to run before
@@ -122,9 +124,10 @@ let
               aServicePreceedsTargets = filterServiceItemsForType aServicePreceeds "target";
               aServicePreceedsServices = filterServiceItemsForType aServicePreceeds "service";
             in
-              # If this other service wants to preceed the service, or if this other service wants to start before a target the service wants
-              builtins.elem serviceName aServicePreceedsServices || (builtins.length (builtins.filter (t: builtins.elem t requiredTargets) aServicePreceedsTargets)) != 0
-        ) (builtins.attrNames services);
+            # If this other service wants to preceed the service, or if this other service wants to start before a target the service wants
+            builtins.elem serviceName aServicePreceedsServices || (builtins.length (builtins.filter (t: builtins.elem t requiredTargets) aServicePreceedsTargets)) != 0
+          )
+          (builtins.attrNames services);
 
         # Filtr down the list of required services to only those which exist
         existingRequiredServices = builtins.filter (n: builtins.hasAttr n services) requiredServices;
@@ -132,50 +135,51 @@ let
         # Make a semi-full list of requirements from the requirements that exist and the requirements found from iterating other services
         semiFullRequiredServices = existingRequiredServices ++ reverseRequired;
       in
-        # Combine our semi-full list of requirements with the scraped requirements of those requirements
-        semiFullRequiredServices ++ (builtins.concatLists (map getRequiredBy semiFullRequiredServices))
+      # Combine our semi-full list of requirements with the scraped requirements of those requirements
+      semiFullRequiredServices ++ (builtins.concatLists (map getRequiredBy semiFullRequiredServices))
   );
 
   # Convert a SystemD ExecStart into a bash line (they often begin with special operators that must be parsed)
   reparseExecStart = (
     x:
-      let
-        # Split the launch string by spaces (TODO: take (ba)sh? formatting into account, i.e. quotes)
-        split = lib.splitString " " x;
-        # Get the first component of the launch string
-        first = builtins.elemAt split 0;
+    let
+      # Split the launch string by spaces (TODO: take (ba)sh? formatting into account, i.e. quotes)
+      split = lib.splitString " " x;
+      # Get the first component of the launch string
+      first = builtins.elemAt split 0;
 
-        # Helper to seperate prefix operators from the first part of the Exec command
-        collectVood = (
-          s:
-            let
-              # Define the actual function internally to expose a more reasonable API, while supporting recursion
-              _collectVood = (
-                ss: s:
-                # If the current string begins with one of the prefix operator symbols
-                  if (builtins.elem (builtins.substring 0 1 s) [ "@" "-" ":" "!" ]) then
-                    # Recurse this function with the first character (the operator) and the remainder
-                    _collectVood (ss + (builtins.substring 0 1 s)) (builtins.substring 1 (builtins.stringLength s) s)
-                  else [ ss s ] # Return the current string and remainder
-              );
-            in _collectVood "" s
-        );
+      # Helper to seperate prefix operators from the first part of the Exec command
+      collectVood = (
+        s:
+        let
+          # Define the actual function internally to expose a more reasonable API, while supporting recursion
+          _collectVood = (
+            ss: s:
+              # If the current string begins with one of the prefix operator symbols
+              if (builtins.elem (builtins.substring 0 1 s) [ "@" "-" ":" "!" ]) then
+              # Recurse this function with the first character (the operator) and the remainder
+                _collectVood (ss + (builtins.substring 0 1 s)) (builtins.substring 1 (builtins.stringLength s) s)
+              else [ ss s ] # Return the current string and remainder
+          );
+        in
+        _collectVood "" s
+      );
 
-        # Use the helper above to seperate the prefix operators from the launch string
-        vood = collectVood first;
-        prefixParts = builtins.elemAt vood 0;
-        firstParts = builtins.elemAt vood 1;
+      # Use the helper above to seperate the prefix operators from the launch string
+      vood = collectVood first;
+      prefixParts = builtins.elemAt vood 0;
+      firstParts = builtins.elemAt vood 1;
 
-        # Make a string from the remainder of the ExecStart line (not including the first part, which was parsed)
-        remainder = builtins.concatStringsSep " " (lib.drop 1 split);
+      # Make a string from the remainder of the ExecStart line (not including the first part, which was parsed)
+      remainder = builtins.concatStringsSep " " (lib.drop 1 split);
 
-        # Compile a simple program that will replace argv[0] with the 2nd provided arg
-        modFirstArg = pkgs.runCommandCC "mod-first-arg" {} "echo \"int main(int c,char*v[]){execvp(v[1],&v[2]);perror(v[1]);return 127;}\" > r.c;gcc -o $out r.c;strip $out";
-      in
-        if (builtins.elem "@" (lib.stringToCharacters prefixParts)) then
-          "${modFirstArg} ${firstParts} ${remainder}"
-        else # TODO: support more operators
-          "${firstParts} ${remainder}"
+      # Compile a simple program that will replace argv[0] with the 2nd provided arg
+      modFirstArg = pkgs.runCommandCC "mod-first-arg" { } "echo \"int main(int c,char*v[]){execvp(v[1],&v[2]);perror(v[1]);return 127;}\" > r.c;gcc -o $out r.c;strip $out";
+    in
+    if (builtins.elem "@" (lib.stringToCharacters prefixParts)) then
+      "${modFirstArg} ${firstParts} ${remainder}"
+    else # TODO: support more operators
+      "${firstParts} ${remainder}"
   );
 
   # Helper copied from the SystemD NixOS module (TODO: import it?)
@@ -183,7 +187,8 @@ let
   makeJobScript = name: text:
     let
       mkScriptName = s: "unit-script-" + (lib.replaceChars [ "\\" "@" ] [ "-" "_" ] (shellEscape s));
-    in pkgs.writeTextFile { name = mkScriptName name; executable = true; inherit text; };
+    in
+    pkgs.writeTextFile { name = mkScriptName name; executable = true; inherit text; };
 
   makeServiceLaunchScript = (
     services: serviceName:
@@ -224,28 +229,30 @@ let
         };
 
         # Convert the service's specified environment variables into an env-setting script snippet
-        envLines = map (
-          k:
+        envLines = map
+          (
+            k:
             "${k}=${env.${k}}"
-        ) (builtins.attrNames env);
+          )
+          (builtins.attrNames env);
       in
-        pkgs.writeScript "service-launch-${serviceName}" ''
-          #! ${pkgs.runtimeShell} -e
-          ${builtins.concatStringsSep "\n" envLines}
-          ${preStart}
-          ${start}
-        '' + (
-          if (service.serviceConfig.Type == "forking") then "\n" + ''
-            # This will retry reading the PIDFile until success
-            while true; do
-              export PID=$(${pkgs.coreutils}/bin/cat ${service.serviceConfig.PIDFile})
-              [ ! -z "$PID" ] && break
-            done
+      pkgs.writeScript "service-launch-${serviceName}" ''
+        #! ${pkgs.runtimeShell} -e
+        ${builtins.concatStringsSep "\n" envLines}
+        ${preStart}
+        ${start}
+      '' + (
+        if (service.serviceConfig.Type == "forking") then "\n" + ''
+          # This will retry reading the PIDFile until success
+          while true; do
+            export PID=$(${pkgs.coreutils}/bin/cat ${service.serviceConfig.PIDFile})
+            [ ! -z "$PID" ] && break
+          done
 
-            # This will end when the process exits
-            ${pkgs.coreutils}/bin/tail -f /proc/$PID/fd/1 /proc/$PID/fd/2 --pid=$PID
-          '' else ""
-        )
+          # This will end when the process exits
+          ${pkgs.coreutils}/bin/tail -f /proc/$PID/fd/1 /proc/$PID/fd/2 --pid=$PID
+        '' else ""
+      )
   );
 in
 {
@@ -253,40 +260,41 @@ in
 
   entrypoint =
     let
-      entrypointScriptContents = if (rootEntrypointScript != null || userEntrypointScript != null || systemdService != null) then
-        ''
-          #!${pkgs.dash}/bin/dash
+      entrypointScriptContents =
+        if (rootEntrypointScript != null || userEntrypointScript != null || systemdService != null) then
+          ''
+            #!${pkgs.dash}/bin/dash
 
-          # If we're lucky, Docker will make us a real one, otherwise lets just make it
-          ${pkgs.coreutils}/bin/mkdir -p /tmp
-          # These octets make me cringe but I think this actually correct
-          ${pkgs.coreutils}/bin/chmod 777 /tmp
+            # If we're lucky, Docker will make us a real one, otherwise lets just make it
+            ${pkgs.coreutils}/bin/mkdir -p /tmp
+            # These octets make me cringe but I think this actually correct
+            ${pkgs.coreutils}/bin/chmod 777 /tmp
 
-          ${if user == null && entrypoint != null then "${pkgs.coreutils}/bin/chown -R continix:continix /data" else ""}
-          ${if user == null && entrypoint != null then "${pkgs.coreutils}/bin/chmod -R guo+rwX /data" else ""}
+            ${if user == null && entrypoint != null then "${pkgs.coreutils}/bin/chown -R continix:continix /data" else ""}
+            ${if user == null && entrypoint != null then "${pkgs.coreutils}/bin/chmod -R guo+rwX /data" else ""}
 
-          ${if rootEntrypointScript != null then rootEntrypointScript else ""}
-          ${if userEntrypointScript != null then "${pkgs.gosu}/bin/gosu ${if user != null then user else "continix"} ${userEntrypointScript}" else ""}
-        '' + (
-          if systemdService != null then
-            let
-              # Gather the requirements for the specified service
-              requirements = getRequiredBy evaled.config.systemd.services systemdService;
-              # Filter down to only oneshot services
-              shottableRequirements = builtins.filter (s: s.serviceConfig.Type == "oneshot") requirements;
+            ${if rootEntrypointScript != null then rootEntrypointScript else ""}
+            ${if userEntrypointScript != null then "${pkgs.gosu}/bin/gosu ${if user != null then user else "continix"} ${userEntrypointScript}" else ""}
+          '' + (
+            if systemdService != null then
+              let
+                # Gather the requirements for the specified service
+                requirements = getRequiredBy evaled.config.systemd.services systemdService;
+                # Filter down to only oneshot services
+                shottableRequirements = builtins.filter (s: s.serviceConfig.Type == "oneshot") requirements;
 
-              # Make a list of all the services which should be ran
-              allServices = (shottableRequirements ++ [ systemdService ]);
+                # Make a list of all the services which should be ran
+                allServices = (shottableRequirements ++ [ systemdService ]);
 
-              # Map a makeServiceLaunchScript function with applied services over the services that should be ran
-              serviceLaunchScripts = map (makeServiceLaunchScript evaled.config.systemd.services) allServices;
-            in
+                # Map a makeServiceLaunchScript function with applied services over the services that should be ran
+                serviceLaunchScripts = map (makeServiceLaunchScript evaled.config.systemd.services) allServices;
+              in
               # Finally, the actual service entrypoint contents
               builtins.concatStringsSep "\n" serviceLaunchScripts
-          else ""
-        )
-      else null;
+            else ""
+          )
+        else null;
     in
-      # Only define an entrypoint if contents for it were provided
-      if entrypointScriptContents != null then pkgs.writeScript "entrypoint.sh" entrypointScriptContents else null;
+    # Only define an entrypoint if contents for it were provided
+    if entrypointScriptContents != null then pkgs.writeScript "entrypoint.sh" entrypointScriptContents else null;
 }
