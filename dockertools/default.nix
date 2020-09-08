@@ -59,25 +59,25 @@ rec {
     , name ? fixName "docker-image-${finalImageName}-${finalImageTag}.tar"
     }:
 
-      runCommand
-        name
-        {
-          inherit imageDigest;
-          imageName = finalImageName;
-          imageTag = finalImageTag;
-          impureEnvVars = stdenv.lib.fetchers.proxyImpureEnvVars;
-          outputHashMode = "flat";
-          outputHashAlgo = "sha256";
-          outputHash = sha256;
+    runCommand
+      name
+      {
+        inherit imageDigest;
+        imageName = finalImageName;
+        imageTag = finalImageTag;
+        impureEnvVars = stdenv.lib.fetchers.proxyImpureEnvVars;
+        outputHashMode = "flat";
+        outputHashAlgo = "sha256";
+        outputHash = sha256;
 
-          nativeBuildInputs = lib.singleton skopeo;
-          SSL_CERT_FILE = "${cacert.out}/etc/ssl/certs/ca-bundle.crt";
+        nativeBuildInputs = lib.singleton skopeo;
+        SSL_CERT_FILE = "${cacert.out}/etc/ssl/certs/ca-bundle.crt";
 
-          sourceURL = "docker://${imageName}@${imageDigest}";
-          destNameTag = "${finalImageName}:${finalImageTag}";
-        } ''
-        skopeo --override-os ${os} --override-arch ${arch} copy "$sourceURL" "docker-archive://$out:$destNameTag"
-      '';
+        sourceURL = "docker://${imageName}@${imageDigest}";
+        destNameTag = "${finalImageName}:${finalImageTag}";
+      } ''
+      skopeo --override-os ${os} --override-arch ${arch} copy "$sourceURL" "docker-archive://$out:$destNameTag"
+    '';
 
   # We need to sum layer.tar, not a directory, hence tarsum instead of nix-hash.
   # And we cannot untar it, because then we cannot preserve permissions ecc.
@@ -760,10 +760,11 @@ rec {
 
       layer =
         if runAsRoot == null then
-          mkPureLayer {
-            name = baseName;
-            inherit baseJson contents keepContentsDirlinks extraCommands uid gid;
-          }
+          mkPureLayer
+            {
+              name = baseName;
+              inherit baseJson contents keepContentsDirlinks extraCommands uid gid;
+            }
         else
           mkRootLayer {
             name = baseName;

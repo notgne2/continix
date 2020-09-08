@@ -4,6 +4,7 @@
   options = {
     services.nscd.enable = lib.mkOption { default = false; };
     systemd.services = lib.mkOption { };
+    systemd.tmpfiles = lib.mkOption { };
     security.pam = lib.mkOption { };
     security.acme = lib.mkOption { };
     security.wrappers = lib.mkOption { };
@@ -12,6 +13,9 @@
 
     # time.timeZone must be null for Apache-PHP to shut up
     time = lib.mkOption { };
+
+    # another thing used by apache
+    services.logrotate = lib.mkOption { };
   };
 
   config = {

@@ -37,7 +37,6 @@ let
           "config/system-environment.nix"
           "config/fonts/fonts.nix"
           "config/fonts/fontconfig.nix"
-          "config/fonts/fontconfig-penultimate.nix"
           "programs/environment.nix"
           "programs/shadow.nix"
           "services/web-servers/apache-httpd/default.nix"
@@ -72,20 +71,20 @@ let
   sys = evaled.config.system;
 
   userEntrypointScript =
-    if entrypoint != null then (
-      pkgs.writeScript "user-entrypoint.sh" ''
+    if entrypoint != null then
+      (pkgs.writeScript "user-entrypoint.sh" ''
         #!${pkgs.dash}/bin/dash
         ${entrypoint}
       ''
-    ) else null;
+      ) else null;
 
   rootEntrypointScript =
-    if rootEntrypoint != null then (
-      pkgs.writeScript "root-entrypoint.sh" ''
+    if rootEntrypoint != null then
+      (pkgs.writeScript "root-entrypoint.sh" ''
         #!${pkgs.dash}/bin/dash
         ${rootEntrypoint}
       ''
-    ) else null;
+      ) else null;
 
   # Filter a list of service items ([ "something.target" "anotherthing.service" ]) into a list of a specific type ([ "something" ])
   filterServiceItemsForType = (required: type: map (x: builtins.elemAt x 0) (builtins.filter (x: (builtins.elemAt x 1) == type) required));
@@ -240,7 +239,7 @@ let
         #! ${pkgs.runtimeShell} -e
         ${builtins.concatStringsSep "\n" envLines}
         ${preStart}
-        ${start}
+        exec ${start}
       '' + (
         if (service.serviceConfig.Type == "forking") then "\n" + ''
           # This will retry reading the PIDFile until success
@@ -250,7 +249,7 @@ let
           done
 
           # This will end when the process exits
-          ${pkgs.coreutils}/bin/tail -f /proc/$PID/fd/1 /proc/$PID/fd/2 --pid=$PID
+          exec ${pkgs.coreutils}/bin/tail -f /proc/$PID/fd/1 /proc/$PID/fd/2 --pid=$PID
         '' else ""
       )
   );
@@ -273,8 +272,8 @@ in
             ${if user == null && entrypoint != null then "${pkgs.coreutils}/bin/chown -R continix:continix /data" else ""}
             ${if user == null && entrypoint != null then "${pkgs.coreutils}/bin/chmod -R guo+rwX /data" else ""}
 
-            ${if rootEntrypointScript != null then rootEntrypointScript else ""}
-            ${if userEntrypointScript != null then "${pkgs.gosu}/bin/gosu ${if user != null then user else "continix"} ${userEntrypointScript}" else ""}
+            ${if rootEntrypointScript != null then "exec " + rootEntrypointScript else ""}
+            ${if userEntrypointScript != null then "exec ${pkgs.gosu}/bin/gosu ${if user != null then user else "continix"} ${userEntrypointScript}" else ""}
           '' + (
             if systemdService != null then
               let

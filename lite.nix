@@ -10,5 +10,7 @@
     users.defaultUserShell = pkgs.dash;
 
     fonts.fontconfig.enable = lib.mkDefault false;
+
+    services.httpd.logFormat = lib.mkDefault "none";
   };
 }
