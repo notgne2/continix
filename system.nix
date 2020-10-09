@@ -13,7 +13,6 @@
 , entrypoint ? null
 , rootEntrypoint ? null
 , systemdService ? null
-,
 }:
 let
   evaled = (
