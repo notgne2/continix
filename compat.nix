@@ -16,6 +16,12 @@
 
     # another thing used by apache
     services.logrotate = lib.mkOption { };
+
+    services.xserver.enable = lib.mkOption { };
+    security.apparmor.includes = lib.mkOption { };
+    networking.hostName = lib.mkOption { };
+
+    security.wrapperDir = lib.mkOption { };
   };
 
   config = {
@@ -23,5 +29,9 @@
     users.mutableUsers = false;
     users.enforceStaticIds = true;
     time.timeZone = null; # Apache-PHP wants this
+
+    networking.hostName = "continix";
+
+    security.wrapperDir = "/run/i-dont-exist";
   };
 }

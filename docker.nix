@@ -13,15 +13,9 @@ in
   , enableLocale ? false
   , extraDockerConfig ? { }
   , env ? [ ]
-  , maxLayers ? 120
-  , perLayer ? 3
-  , hints ? r (maxLayers - 1) perLayer
   }:
-  let
-    dockerTools = pkgs.callPackage (./dockertools/default.nix) { };
-  in
-  dockerTools.buildLayeredImage {
-    inherit maxLayers name tag hints;
+  pkgs.dockerTools.buildImage {
+    inherit name tag;
 
     contents = pkgs.symlinkJoin {
       name = "${name}-contents";

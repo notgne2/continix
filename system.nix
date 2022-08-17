@@ -13,11 +13,12 @@
 , entrypoint ? null
 , rootEntrypoint ? null
 , systemdService ? null
+, system
 }:
 let
   evaled = (
     import "${nixpkgs}/nixos/lib/eval-config.nix" {
-      inherit pkgs;
+      inherit pkgs system;
 
       # Override the base modules with our own limited set of modules
       baseModules = (
@@ -39,6 +40,11 @@ let
           "programs/environment.nix"
           "programs/shadow.nix"
           "services/web-servers/apache-httpd/default.nix"
+
+          "programs/less.nix"
+
+          # "services/x11/xserver.nix"
+          # "system/boot/kernel.nix"
         ]
       ) ++ [
         # Custom system-path module for a lighter system
@@ -234,22 +240,31 @@ let
           )
           (builtins.attrNames env);
       in
-      pkgs.writeScript "service-launch-${serviceName}" ''
-        #! ${pkgs.runtimeShell} -e
-        ${builtins.concatStringsSep "\n" envLines}
-        ${preStart}
-        exec ${start}
-      '' + (
-        if (service.serviceConfig.Type == "forking") then "\n" + ''
-          # This will retry reading the PIDFile until success
-          while true; do
-            export PID=$(${pkgs.coreutils}/bin/cat ${service.serviceConfig.PIDFile})
-            [ ! -z "$PID" ] && break
-          done
+      pkgs.writeScript "service-launch-${serviceName}" (
+        ''
+          #! ${pkgs.runtimeShell} -e
+        ''
+        + (lib.concatStringsSep "\n" (map (p: ''
+          ${pkgs.coreutils}/bin/mkdir -p '/run/${p}'
+        '') (lib.splitString " " (if service.serviceConfig.RuntimeDirectory == null then "" else service.serviceConfig.RuntimeDirectory))))
+        + (if service.serviceConfig.Type == "forking" then ''
+          ${pkgs.coreutils}/bin/mkdir -p "$(${pkgs.coreutils}/bin/dirname '${service.serviceConfig.PIDFile}')"
+        '' else "") + ''
+          ${builtins.concatStringsSep "\n" envLines}
+          ${preStart}
+          exec ${start}
+        '' + (
+          if service.serviceConfig.Type == "forking" then ''
+            # This will retry reading the PIDFile until success
+            while true; do
+              export PID=$(${pkgs.coreutils}/bin/cat ${service.serviceConfig.PIDFile})
+              [ ! -z "$PID" ] && break
+            done
 
-          # This will end when the process exits
-          exec ${pkgs.coreutils}/bin/tail -f /proc/$PID/fd/1 /proc/$PID/fd/2 --pid=$PID
-        '' else ""
+            # This will end when the process exits
+            exec ${pkgs.coreutils}/bin/tail -f /proc/$PID/fd/1 /proc/$PID/fd/2 --pid=$PID
+          '' else ""
+        )
       )
   );
 in
@@ -265,8 +280,10 @@ in
 
             # If we're lucky, Docker will make us a real one, otherwise lets just make it
             ${pkgs.coreutils}/bin/mkdir -p /tmp
+            ${pkgs.coreutils}/bin/mkdir -p /run
             # These octets make me cringe but I think this actually correct
             ${pkgs.coreutils}/bin/chmod 777 /tmp
+            ${pkgs.coreutils}/bin/chmod 777 /run
 
             ${if user == null && entrypoint != null then "${pkgs.coreutils}/bin/chown -R continix:continix /data" else ""}
             ${if user == null && entrypoint != null then "${pkgs.coreutils}/bin/chmod -R guo+rwX /data" else ""}

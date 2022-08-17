@@ -12,5 +12,7 @@
     fonts.fontconfig.enable = lib.mkDefault false;
 
     services.httpd.logFormat = lib.mkDefault "none";
+
+    programs.less.enable = lib.mkOverride 60 false;
   };
 }
